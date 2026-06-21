@@ -1,0 +1,90 @@
+# Project Plan — Credit Foundation Model Framework
+
+> Internal · not pushed to git. **The stable map** (changes rarely). For "where are we right
+> now" see [`STATUS.md`](STATUS.md). Tasks: `[x]` done · `[~]` partial · `[ ]` open.
+
+**Objective.** Open-source (Apache 2.0) framework for training credit foundation models +
+Dutch-mortgages & invoice-financing reference implementations. finevals.ai × Sriram Krishnan,
+NVIDIA-sponsored (8× H100). Encoder-only MLM, three-branch, key-value-time tokenization.
+
+**Timeline.** Kickoff **Thu 18 Jun 2026**, ~12 weeks (6 phases × 2 weeks) → handoff **~9 Sep 2026**.
+
+## Milestones (target dates)
+
+| Milestone | Phase | Target date | Status |
+|-----------|-------|-------------|--------|
+| **M1** — tokenizer complete | A | **Wed 1 Jul 2026** | 🔄 in progress |
+| **G1** — baseline gate (trustworthy labels + strong baseline) | B | **Tue 15 Jul 2026** | 🟢 baseline done early (0.73); gate review pending |
+| **M2** — model forward + toy train works | C | **Tue 29 Jul 2026** | ⬜ |
+| **M3** — pretrained 30M checkpoint | D | **Tue 12 Aug 2026** | ⬜ |
+| **M4** — Dutch mortgages reference complete | E | **Tue 26 Aug 2026** | ⬜ |
+| **M5 / M6** — invoice reference + final handoff | F | **Tue 9 Sep 2026** | ⬜ |
+
+## Task tracker (by phase)
+
+### Phase A — Setup + Tokenizer  (18 Jun → 1 Jul)
+- [x] Repo + `credit_fm` scaffold; Apache 2.0; CI.
+- [x] H100 container env (venv, install, 8 GPUs, W&B, HF).
+- [x] Loan-stratified **temporal** split (`prepare_data.py` + `splits.py` + tests).
+- [x] Restore missing `src/credit_fm/data/` module (gitignore bug).
+- [x] Reproducible 71-field classification → `tokenizer.yaml` (42 features; `find_redundant` + CI test).
+- [x] `docs/decision_log.md` DL-001…010; `docs/tokenization.md`; `CLAUDE.md`.
+- [x] Smoke test validates splits (`notebooks/00_smoke_test_splits.ipynb`).
+- [ ] `tokenizer/vocabulary.py` + `base.py` — vocab fit **on `train` only**.  ← **NEXT**
+- [ ] `numeric_bucketer.py` · `categorical.py` ([UNK]) · `temporal.py`.
+- [ ] `KVTTokenizer` encode/decode; **roundtrip ≥99%**; token QA report. → **M1**
+
+### Phase B — Data layer + Baselines  (2 Jul → 15 Jul)
+- [x] `scripts/train_baseline.py` (4 configs, temporal split, performing-gate) + `reports/baseline_report.md` → **Gate G1 = ROC 0.73 / PR-AUC 0.046**.
+- [~] Segment-conditional validation — `loan_book.parquet` located (`out_500k_v2_1`, 16–32× spread); fold into baseline + report.
+- [ ] `label_generators.py` (default/prepay/cure) — formalize forward-window label + edge tests.
+- [ ] `evaluation/metrics.py` (ROC/PR/KS/Gini/Brier/lift) — sklearn-parity.
+- [ ] `data/`: `schema.validate`, `dataset.py`, `collators.py`, `datamodule.py`. → **G1 review**
+
+### Phase C — Model (three-branch encoder)  (16 Jul → 29 Jul)
+- [ ] `models/base.py` (RoPE/attention/RMSNorm).
+- [ ] `profile_encoder` (3L) · `event_encoder` (4–5L) · `history_encoder` (4–6L) + shape tests.
+- [ ] `mlm_head` (3-vector concat) · `classification_head`.
+- [ ] `credit_fm.py` composition; `training/masking.py` (15/10/10).
+- [ ] Single-GPU validation (1k loans × 100 steps, non-NaN); `test_e2e` < 60s. → **M2**
+
+### Phase D — Training + Pretraining  (30 Jul → 12 Aug)  ← highest risk
+- [ ] `optimizers.py` + `callbacks.py` (W&B); `trainer.py` (HF) + NeMo adapter.
+- [ ] Full pretraining on 500k Dutch mortgages (8× H100); iterate to convergence.
+- [ ] Freeze candidate 30M checkpoint; training report. → **M3 (LFS)**
+
+### Phase E — Inference + Evaluation + Dashboard  (13 Aug → 26 Aug)
+- [ ] `inference/extractor.py` + `pooling.py` ([USR]); `extract_embeddings.py`.
+- [ ] `inference/lora.py`; `evaluate_downstream.py` three-way (baseline / emb / combined / LoRA).
+- [ ] `calibration.py` + `lift.py`; evaluation report; `ablation_profile_state.py`.
+- [ ] FastAPI dashboard; Dutch mortgages model_card + data_card. → **M4**
+
+### Phase F — Invoice reference + Handoff  (27 Aug → 9 Sep)
+- [ ] Invoice `prepare_data` + `configs/invoice_financing/*`; document config deltas vs Dutch.
+- [ ] Train tokenizer + baseline + pretrain; extract + evaluate; cards. → **M5**
+- [ ] Finalize docs; coverage >80%; 5-min demo; final technical report. → **M6 handoff**
+
+## Critical path
+A (tokenizer) → B/G1 (baseline gate) → C (model) → **D (pretraining run = longest pole, protect it)**
+→ E depends on a converged checkpoint. F depends on external invoice data.
+
+## Risks
+| Risk | Mitigation |
+|------|------------|
+| Will the model train/converge at all? (biggest unknown) | Race to a toy run early (Phase C); checkpoint often |
+| Memorization (30M on ~600M synthetic tokens) | Hold 30M; 50M only with extra public data; watch val loss |
+| Inflated baseline → misleading lift | Honest gated/no-leakage baseline (done); segment-ceiling context |
+| Data leakage (future-state fields) | loan-level temporal split; vocab on train; gate state features |
+| Invoice data slips | Escalate to Algoritmica now; Dutch ref is the primary deliverable |
+| H100 access/storage | Checkpoint frequently; size run to available GPUs |
+
+## Open questions
+1. **Invoice financing data** — source + schema, needed before Phase F. *(Algoritmica)*
+2. **Latent-segment extract** — `loan_book.parquet` (located locally; get it onto the container). *(data team)*
+3. **W&B hosted vs offline/self-hosted** — decide before Phase D (DL-009; sovereign-cloud).
+4. **OSS release timing** — full at end vs staged (checkpoint first)?
+5. **Engagement continuation** beyond month 3.
+
+## Existing assets (don't rebuild)
+`Algoritmica/green-lion-2024-2025` (HF) · deeploans synthetic-data-designer · 53-test SQL
+validation suite · NVIDIA TFM blueprint (adapt, don't fork) · FastAPI dashboard skeleton.
