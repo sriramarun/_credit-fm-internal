@@ -4,8 +4,13 @@
 > now" see [`STATUS.md`](STATUS.md). Tasks: `[x]` done · `[~]` partial · `[ ]` open.
 
 **Objective.** Open-source (Apache 2.0) framework for training credit foundation models +
-Dutch-mortgages & invoice-financing reference implementations. finevals.ai × Sriram Krishnan,
-NVIDIA-sponsored (8× H100). Encoder-only MLM, three-branch, key-value-time tokenization.
+reference implementations. finevals.ai × Sriram Krishnan, NVIDIA-sponsored (8× H100).
+Encoder-only MLM, three-branch, key-value-time tokenization.
+
+**Primary corpus (decided 22 Jun 2026): Fannie Mae Single-Family Loan Performance** — real-world
+US fixed-rate mortgages, ~25 years, ~100 quarterly parquet snapshots from GCS. Dutch synthetic
+panel → **validation/ablation** (keeps the `_segment` ceiling proof); invoice = planned. Strategy:
+dev-sample-first (1–2 quarters) → prove pipeline → scale. M3/M4 retarget to Fannie as primary.
 
 **Timeline.** Kickoff **Thu 18 Jun 2026**, ~12 weeks (6 phases × 2 weeks) → handoff **~9 Sep 2026**.
 
@@ -35,8 +40,10 @@ NVIDIA-sponsored (8× H100). Encoder-only MLM, three-branch, key-value-time toke
 - [ ] `KVTTokenizer` encode/decode; **roundtrip ≥99%**; token QA report. → **M1**
 
 ### Phase B — Data layer + Baselines  (2 Jul → 15 Jul)
-- [x] `scripts/train_baseline.py` (4 configs, temporal split, performing-gate) + `reports/baseline_report.md` → **Gate G1 = ROC 0.73 / PR-AUC 0.046**.
-- [~] Segment-conditional validation — `loan_book.parquet` located (`out_500k_v2_1`, 16–32× spread); fold into baseline + report.
+- [~] **Fannie Mae (PRIMARY) onboarding** — `scripts/ingest_fannie_mae.py` (GCS quarterly parquet → derived `default_event`/`is_performing`/real `origination_date`), `configs/fannie_mae/baseline.yaml`, `docs/data/fannie_mae.md`, `reference_implementations/fannie_mae/`. **Scaffolding done 22 Jun**; pending: GCS auth on container, dev-sample ingest (1–2 quarters), Fannie Gate-G1 baseline + tokenizer.yaml, then scale.
+- [x] `scripts/train_baseline.py` (4 configs, temporal split, performing-gate) + `reports/baseline_report.md` → **Gate G1 (Dutch) = ROC 0.73 / PR-AUC 0.046**.
+- [x] **Ceiling validation wired into `train_baseline.py` + report** — segment-conditional default (34× spread), oracle-segment lift (PR-AUC +95%, 0.046→0.090), segment unrecoverable from observables (65% ≈ 63% majority). `loan_book.parquet` = `out_500k_v2_1`.
+- [x] **`train_baseline.py` is now config-driven** (`configs/dutch_mortgages/baseline.yaml`) → schema-agnostic; new asset = new config, no code change. Split + classify already generic. `RUNBOOK.md` added.
 - [ ] `label_generators.py` (default/prepay/cure) — formalize forward-window label + edge tests.
 - [ ] `evaluation/metrics.py` (ROC/PR/KS/Gini/Brier/lift) — sklearn-parity.
 - [ ] `data/`: `schema.validate`, `dataset.py`, `collators.py`, `datamodule.py`. → **G1 review**
