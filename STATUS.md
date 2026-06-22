@@ -1,7 +1,12 @@
 # Status — Credit Foundation Model Framework
 
 > Internal · the **live dashboard + weekly report**. Refresh every week and when a milestone
-> lands. The stable roadmap is in [`PLAN.md`](PLAN.md). *(Last updated: 21 Jun 2026)*
+> lands. The stable roadmap is in [`PLAN.md`](PLAN.md). *(Last updated: 22 Jun 2026)*
+
+**📌 22 Jun — primary corpus switched to Fannie Mae** (real-world US single-family fixed,
+~25 yrs, ~100 quarterly parquet snapshots in GCS). Dutch synthetic panel → validation/ablation
+(keeps `_segment` ceiling proof). Scaffolding landed (`ingest_fannie_mae.py`, `configs/fannie_mae/`,
+`docs/data/fannie_mae.md`); next: GCS auth on container + dev-sample ingest → Fannie Gate-G1.
 
 ## At a glance
 
@@ -38,16 +43,18 @@ M5/M6 handoff     ░░░░░░░░░░   not started   target  9 Sep
 - Build the **tokenizer** (`vocabulary` → `KVTTokenizer`, vocab on `train` only) → **M1**.
 - Then race to a **first toy pretraining run** (de-risk "does it train at all" early).
 
-## Key result — the story in one slide
+## Key result — the story in one slide (now quantified)
 
-> Among loans that look healthy today, predicting *new* defaults is hard for tabular models
-> (PR-AUC 0.046). The reason: a hidden borrower-fragility segment causes **16–32× more defaults**
-> but isn't visible in standard credit fields. The foundation model reads each loan's behavioural
-> sequence to recover that latent — that's the headroom above the 0.73 baseline.
+> Among currently-performing loans, predicting *new* defaults is hard for tabular models
+> (Gate G1 PR-AUC **0.046**). The reason: a hidden borrower-fragility **segment** drives a **34×**
+> default spread (0.28% → 9.60%) but is **invisible to standard credit fields** — XGBoost recovers
+> it at only 65% vs a 63% majority baseline. If a model *could* see the segment, PR-AUC nearly
+> **doubles (0.046 → 0.090, +95%)** and ROC-AUC +0.11. The foundation model reads each loan's
+> behavioural sequence to recover that latent — **that +95% is the headroom it's chasing.**
 
 ## Blockers & asks
-- 🔴 **Latent-segment extract** onto the container (`loan_book.parquet`) — to run the ceiling
-  validation as a committed artifact. *(have the file locally; needs transfer)*
+- 🟢 Ceiling validation **built** (`train_baseline.py --book` → 4-config table + segment proof in
+  `reports/baseline_report.md`). Minor: get `loan_book.parquet` onto the container to regenerate there.
 - 🟡 **W&B hosting decision** (hosted vs offline/self-hosted) before pretraining. *(DL-009)*
 - 🟡 **Invoice-financing dataset** — needed by ~week 9. *(Algoritmica)*
 
