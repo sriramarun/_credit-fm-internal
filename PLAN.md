@@ -10,7 +10,9 @@ Encoder-only MLM, three-branch, key-value-time tokenization.
 **Primary corpus (decided 22 Jun 2026): Fannie Mae Single-Family Loan Performance** — real-world
 US fixed-rate mortgages, ~25 years, ~100 quarterly parquet snapshots from GCS. Dutch synthetic
 panel → **validation/ablation** (keeps the `_segment` ceiling proof); invoice = planned. Strategy:
-dev-sample-first (1–2 quarters) → prove pipeline → scale. M3/M4 retarget to Fannie as primary.
+dev-sample-first → **now at full 26-yr scale on GCS; OOT baselines done (25 Jun)**. M3/M4 on Fannie.
+**Two GCS layouts:** `parquet/<acqQ>` (cohort, full loan lives → OOT baseline + FM sequences) ·
+`fannie_by_reporting/` (reporting-partitioned → single-cutoff snapshot baseline).
 
 **Timeline.** Kickoff **Thu 18 Jun 2026**, ~12 weeks (6 phases × 2 weeks) → handoff **~9 Sep 2026**.
 
@@ -19,10 +21,10 @@ dev-sample-first (1–2 quarters) → prove pipeline → scale. M3/M4 retarget t
 | Milestone | Phase | Target date | Status |
 |-----------|-------|-------------|--------|
 | **M1** — tokenizer complete | A | **Wed 1 Jul 2026** | 🔄 in progress |
-| **G1** — baseline gate (trustworthy labels + strong baseline) | B | **Tue 15 Jul 2026** | 🟢 baseline done early (0.73); gate review pending |
+| **G1** — baseline gate (trustworthy labels + strong baseline) | B | **Tue 15 Jul 2026** | 🟢 **DONE early** — real-world Fannie **OOT** bars (crisis ROC 0.757 / PR 0.024; recent ~0.78) |
 | **M2** — model forward + toy train works | C | **Tue 29 Jul 2026** | ⬜ |
 | **M3** — pretrained 30M checkpoint | D | **Tue 12 Aug 2026** | ⬜ |
-| **M4** — Dutch mortgages reference complete | E | **Tue 26 Aug 2026** | ⬜ |
+| **M4** — Fannie mortgages reference complete | E | **Tue 26 Aug 2026** | ⬜ |
 | **M5 / M6** — invoice reference + final handoff | F | **Tue 9 Sep 2026** | ⬜ |
 
 ## Task tracker (by phase)
@@ -39,14 +41,15 @@ dev-sample-first (1–2 quarters) → prove pipeline → scale. M3/M4 retarget t
 - [ ] `numeric_bucketer.py` · `categorical.py` ([UNK]) · `temporal.py`.
 - [ ] `KVTTokenizer` encode/decode; **roundtrip ≥99%**; token QA report. → **M1**
 
-### Phase B — Data layer + Baselines  (2 Jul → 15 Jul)
-- [~] **Fannie Mae (PRIMARY) onboarding** — `scripts/ingest_fannie_mae.py` (GCS quarterly parquet → derived `default_event`/`is_performing`/real `origination_date`), `configs/fannie_mae/baseline.yaml`, `docs/data/fannie_mae.md`, `reference_implementations/fannie_mae/`. **Scaffolding done 22 Jun**; pending: GCS auth on container, dev-sample ingest (1–2 quarters), Fannie Gate-G1 baseline + tokenizer.yaml, then scale.
-- [x] `scripts/train_baseline.py` (4 configs, temporal split, performing-gate) + `reports/baseline_report.md` → **Gate G1 (Dutch) = ROC 0.73 / PR-AUC 0.046**.
+### Phase B — Data layer + Baselines  (2 Jul → 15 Jul)  — **baselines DONE (ahead of plan)**
+- [x] **Fannie Mae (PRIMARY) data pipeline** — `fannie-mae-etl` repo (raw zip → parquet → reporting-partitioned GCS, 104 files in 28 min); `ingest_fannie_mae.py` (hive read → derived `default_event`/`is_performing`/ISO dates); `prepare_data.py` + pluggable `storage` (local/gs://s3://); `configs/fannie_mae/{baseline,raw_schema}.yaml`; `docs/data/fannie_mae.md`.
+- [x] **OOT (calendar-split) baseline** (`scripts/build_oot_baseline.py`) — the real bar: per-loan Dec snapshots, 12-mo forward default, loan-disjoint + embargo guards, GPU xgboost, 20% sample, 57 no-leakage features. **Crisis 2000–06→2008–10 = ROC 0.757 / PR 0.024**; **recent →2023–25 = ROC 0.784** (2023–24 re-run pending to drop censored 2025).
+- [x] `scripts/train_baseline.py` (single-cutoff, 4 configs, performing-gate) + `reports/baseline_report.md` → **Gate G1 (Dutch synthetic) = ROC 0.73 / PR-AUC 0.046** (methodology proof).
 - [x] **Ceiling validation wired into `train_baseline.py` + report** — segment-conditional default (34× spread), oracle-segment lift (PR-AUC +95%, 0.046→0.090), segment unrecoverable from observables (65% ≈ 63% majority). `loan_book.parquet` = `out_500k_v2_1`.
 - [x] **`train_baseline.py` is now config-driven** (`configs/dutch_mortgages/baseline.yaml`) → schema-agnostic; new asset = new config, no code change. Split + classify already generic. `RUNBOOK.md` added.
-- [ ] `label_generators.py` (default/prepay/cure) — formalize forward-window label + edge tests.
-- [ ] `evaluation/metrics.py` (ROC/PR/KS/Gini/Brier/lift) — sklearn-parity.
-- [ ] `data/`: `schema.validate`, `dataset.py`, `collators.py`, `datamodule.py`. → **G1 review**
+- [ ] (now in service of the FM, not the baseline) `evaluation/metrics.py` (ROC/PR/KS/Gini/Brier/lift) — sklearn-parity; `label_generators.py` formalize forward-window label.
+- [ ] `data/`: `schema.validate`, `dataset.py`, `collators.py`, `datamodule.py` — **per-loan sequence loader from the acquisition-cohort files** (the FM data layer).
+- [ ] **Cleanups:** commit 2023–24 recent OOT re-run; optional auto-censoring guard; drop `reports/_oot_smoke.md`.
 
 ### Phase C — Model (three-branch encoder)  (16 Jul → 29 Jul)
 - [ ] `models/base.py` (RoPE/attention/RMSNorm).
@@ -57,12 +60,12 @@ dev-sample-first (1–2 quarters) → prove pipeline → scale. M3/M4 retarget t
 
 ### Phase D — Training + Pretraining  (30 Jul → 12 Aug)  ← highest risk
 - [ ] `optimizers.py` + `callbacks.py` (W&B); `trainer.py` (HF) + NeMo adapter.
-- [ ] Full pretraining on 500k Dutch mortgages (8× H100); iterate to convergence.
+- [ ] Full pretraining on **Fannie sequences** (8× H100); iterate to convergence.
 - [ ] Freeze candidate 30M checkpoint; training report. → **M3 (LFS)**
 
 ### Phase E — Inference + Evaluation + Dashboard  (13 Aug → 26 Aug)
 - [ ] `inference/extractor.py` + `pooling.py` ([USR]); `extract_embeddings.py`.
-- [ ] `inference/lora.py`; `evaluate_downstream.py` three-way (baseline / emb / combined / LoRA).
+- [ ] `inference/lora.py`; `evaluate_downstream.py` — **FM embeddings through the SAME OOT split/label/metric as `build_oot_baseline.py`** (the FM-vs-0.757 test), three-way (baseline / emb / combined / LoRA).
 - [ ] `calibration.py` + `lift.py`; evaluation report; `ablation_profile_state.py`.
 - [ ] FastAPI dashboard; Dutch mortgages model_card + data_card. → **M4**
 
@@ -72,8 +75,9 @@ dev-sample-first (1–2 quarters) → prove pipeline → scale. M3/M4 retarget t
 - [ ] Finalize docs; coverage >80%; 5-min demo; final technical report. → **M6 handoff**
 
 ## Critical path
-A (tokenizer) → B/G1 (baseline gate) → C (model) → **D (pretraining run = longest pole, protect it)**
-→ E depends on a converged checkpoint. F depends on external invoice data.
+~~B/G1 (baseline gate)~~ **DONE** → **A (tokenizer) = current front** → C (model) →
+**D (pretraining run = longest pole, protect it)** → E depends on a converged checkpoint;
+E's downstream eval reuses the OOT baseline harness. F depends on external invoice data.
 
 ## Risks
 | Risk | Mitigation |
