@@ -20,7 +20,7 @@ dev-sample-first → **now at full 26-yr scale on GCS; OOT baselines done (25 Ju
 
 | Milestone | Phase | Target date | Status |
 |-----------|-------|-------------|--------|
-| **M1** — tokenizer complete | A | **Wed 1 Jul 2026** | 🔄 in progress |
+| **M1** — tokenizer complete | A | **Wed 1 Jul 2026** | 🟢 **DONE early (26 Jun)** — 440-token vocab on real Fannie train; anchored bins + `cal=` macro token; merged PR #31/#32 |
 | **G1** — baseline gate (trustworthy labels + strong baseline) | B | **Tue 15 Jul 2026** | 🟢 **DONE early** — real-world Fannie **OOT** bars (crisis ROC 0.757 / PR 0.024; recent ~0.78) |
 | **M2** — model forward + toy train works | C | **Tue 29 Jul 2026** | ⬜ |
 | **M3** — pretrained 30M checkpoint | D | **Tue 12 Aug 2026** | ⬜ |
@@ -37,9 +37,10 @@ dev-sample-first → **now at full 26-yr scale on GCS; OOT baselines done (25 Ju
 - [x] Reproducible 71-field classification → `tokenizer.yaml` (42 features; `find_redundant` + CI test).
 - [x] `docs/decision_log.md` DL-001…010; `docs/tokenization.md`; `CLAUDE.md`.
 - [x] Smoke test validates splits (`notebooks/00_smoke_test_splits.ipynb`).
-- [ ] `tokenizer/vocabulary.py` + `base.py` — vocab fit **on `train` only**.  ← **NEXT**
-- [ ] `numeric_bucketer.py` · `categorical.py` ([UNK]) · `temporal.py`.
-- [ ] `KVTTokenizer` encode/decode; **roundtrip ≥99%**; token QA report. → **M1**
+- [x] `tokenizer/vocabulary.py` + `numeric_bucketer.py` · `categorical.py` ([UNK]) — vocab fit on `train` only.
+- [x] `KVTTokenizer` encode/decode (branch routing, [USR]/[EVT] blocks, save/load); `train_tokenizer.py` + `tokenizer.json` + token QA report (100% roundtrip). → **M1 essentially done (26 Jun)**.
+- [x] **Reviewer #1/#2 incorporated + re-fit** — threshold-aware + per-field bins (`anchors`, `bins`), calendar `cal=<YYYYQ#>` token (macro regime). ✅ `tokenizer.json` **re-fit on real Fannie train (25.6M rows) → 440 tokens**, merged (PR #31 code / #32 artifacts). Real macro (HPI/rate/unemp) = future event fields. → **M1 DONE (26 Jun)**.
+- [ ] **Doc debt (M1):** update `docs/tokenization.md` (fused `field=value`, `t=`+`cal=`, anchored bins — current text is stale log-seconds/BPE) and `docs/decision_log.md` (DL-011 calendar/macro token, DL-012 anchored/per-field bins).
 
 ### Phase B — Data layer + Baselines  (2 Jul → 15 Jul)  — **baselines DONE (ahead of plan)**
 - [x] **Fannie Mae (PRIMARY) data pipeline** — `fannie-mae-etl` repo (raw zip → parquet → reporting-partitioned GCS, 104 files in 28 min); `ingest_fannie_mae.py` (hive read → derived `default_event`/`is_performing`/ISO dates); `prepare_data.py` + pluggable `storage` (local/gs://s3://); `configs/fannie_mae/{baseline,raw_schema}.yaml`; `docs/data/fannie_mae.md`.
@@ -61,11 +62,13 @@ dev-sample-first → **now at full 26-yr scale on GCS; OOT baselines done (25 Ju
 ### Phase D — Training + Pretraining  (30 Jul → 12 Aug)  ← highest risk
 - [ ] `optimizers.py` + `callbacks.py` (W&B); `trainer.py` (HF) + NeMo adapter.
 - [ ] Full pretraining on **Fannie sequences** (8× H100); iterate to convergence.
+- [ ] **Reviewer #4 — length-bucketed batching** in `collators.py` (group similar-length loans → far less padding; M3 throughput; bounded by `max_events=60`).
 - [ ] Freeze candidate 30M checkpoint; training report. → **M3 (LFS)**
 
 ### Phase E — Inference + Evaluation + Dashboard  (13 Aug → 26 Aug)
 - [ ] `inference/extractor.py` + `pooling.py` ([USR]); `extract_embeddings.py`.
 - [ ] `inference/lora.py`; `evaluate_downstream.py` — **FM embeddings through the SAME OOT split/label/metric as `build_oot_baseline.py`** (the FM-vs-0.757 test), three-way (baseline / emb / combined / LoRA).
+- [ ] **Reviewer #3 — class imbalance** on the downstream head: embedding-probe inherits the baseline's handling (PR-AUC, `--neg-per-pos`); if **fine-tuning**, add focal loss / class weights. **Fairness:** give the OOT baseline the same calendar/macro features the FM gets, or the win isn't apples-to-apples.
 - [ ] `calibration.py` + `lift.py`; evaluation report; `ablation_profile_state.py`.
 - [ ] FastAPI dashboard; Dutch mortgages model_card + data_card. → **M4**
 
