@@ -28,7 +28,7 @@ is essentially complete; the model itself (tokenizer → encoders → pretrain) 
 ```
 M1 tokenizer      ▓▓▓▓▓▓▓▓▓▓  DONE — fit on real Fannie train (25.6M rows) → 440-token vocab; anchored/per-field bins + cal= macro token; 100% roundtrip, 0% OOV; merged (PR #31/#32), tests 14/14  (done 26 Jun, ahead of 1 Jul)
 G1 baseline gate  ▓▓▓▓▓▓▓▓▓▓  DONE — real-world OOT bars established (crisis + recent)
-M2 model          ░░░░░░░░░░  not started   target 29 Jul
+M2 model          ░░░░░░░░░░  not started   HIERARCHICAL 3-branch; data layer→model→toy train; arch FROZEN at M2   internal aim ~18 Jul / target 29 Jul
 M3 pretrained     ░░░░░░░░░░  not started   target 12 Aug
 M4 Fannie ref     ░░░░░░░░░░  not started   target 26 Aug
 M5/M6 handoff     ░░░░░░░░░░  not started   target  9 Sep

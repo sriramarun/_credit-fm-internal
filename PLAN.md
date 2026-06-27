@@ -22,8 +22,8 @@ dev-sample-first → **now at full 26-yr scale on GCS; OOT baselines done (25 Ju
 |-----------|-------|-------------|--------|
 | **M1** — tokenizer complete | A | **Wed 1 Jul 2026** | 🟢 **DONE early (26 Jun)** — 440-token vocab on real Fannie train; anchored bins + `cal=` macro token; merged PR #31/#32 |
 | **G1** — baseline gate (trustworthy labels + strong baseline) | B | **Tue 15 Jul 2026** | 🟢 **DONE early** — real-world Fannie **OOT** bars (crisis ROC 0.757 / PR 0.024; recent ~0.78) |
-| **M2** — model forward + toy train works | C | **Tue 29 Jul 2026** | ⬜ |
-| **M3** — pretrained 30M checkpoint | D | **Tue 12 Aug 2026** | ⬜ |
+| **M2** — **hierarchical** model forward + toy train works (architecture frozen) | C | **Tue 29 Jul 2026** (internal aim ~18 Jul) | ⬜ |
+| **M3** — pretrained 30M checkpoint (M2 arch scaled — data/compute only) | D | **Tue 12 Aug 2026** | ⬜ |
 | **M4** — Fannie mortgages reference complete | E | **Tue 26 Aug 2026** | ⬜ |
 | **M5 / M6** — invoice reference + final handoff | F | **Tue 9 Sep 2026** | ⬜ |
 
@@ -49,20 +49,38 @@ dev-sample-first → **now at full 26-yr scale on GCS; OOT baselines done (25 Ju
 - [x] **Ceiling validation wired into `train_baseline.py` + report** — segment-conditional default (34× spread), oracle-segment lift (PR-AUC +95%, 0.046→0.090), segment unrecoverable from observables (65% ≈ 63% majority). `loan_book.parquet` = `out_500k_v2_1`.
 - [x] **`train_baseline.py` is now config-driven** (`configs/dutch_mortgages/baseline.yaml`) → schema-agnostic; new asset = new config, no code change. Split + classify already generic. `RUNBOOK.md` added.
 - [ ] (now in service of the FM, not the baseline) `evaluation/metrics.py` (ROC/PR/KS/Gini/Brier/lift) — sklearn-parity; `label_generators.py` formalize forward-window label.
-- [ ] `data/`: `schema.validate`, `dataset.py`, `collators.py`, `datamodule.py` — **per-loan sequence loader from the acquisition-cohort files** (the FM data layer).
+- [→] `data/` sequence loader (`dataset.py`/`collators.py`/`datamodule.py`) — **moved to Phase C / M2 Brick 1** (it's the model's data layer; see below).
 - [ ] **Cleanups:** commit 2023–24 recent OOT re-run; optional auto-censoring guard; drop `reports/_oot_smoke.md`.
 
-### Phase C — Model (three-branch encoder)  (16 Jul → 29 Jul)
-- [ ] `models/base.py` (RoPE/attention/RMSNorm).
-- [ ] `profile_encoder` (3L) · `event_encoder` (4–5L) · `history_encoder` (4–6L) + shape tests.
-- [ ] `mlm_head` (3-vector concat) · `classification_head`.
-- [ ] `credit_fm.py` composition; `training/masking.py` (15/10/10).
-- [ ] Single-GPU validation (1k loans × 100 steps, non-NaN); `test_e2e` < 60s. → **M2**
+### Phase C — Model (HIERARCHICAL three-branch encoder) — M2  (start 27 Jun · internal aim ~18 Jul · target 29 Jul)
+**Decision (27 Jun): hierarchical from the start.** Build + debug the *full* hierarchical architecture
+at SMALL scale here, then **freeze it**. M3 changes **only data volume / compute** — never architecture.
+(→ promote to repo **DL-013** when the model code lands.) Goal of M2 = *evidence the architecture learns*,
+not a good model.
 
-### Phase D — Training + Pretraining  (30 Jul → 12 Aug)  ← highest risk
-- [ ] `optimizers.py` + `callbacks.py` (W&B); `trainer.py` (HF) + NeMo adapter.
-- [ ] Full pretraining on **Fannie sequences** (8× H100); iterate to convergence.
+**Brick 1 — Data layer** (`src/credit_fm/data/`; encode-ONCE so the dataloader never re-tokenizes)
+- [ ] `scripts/encode_dataset.py` — tokenizer.json + processed parquet → token-id **shards** on GCS (`output/encoded/fannie_mae/...`).
+- [ ] `dataset.py` (mmap shard reader → ids + branch/segment ids + event boundaries) · `collators.py` (pad + attn mask + `labels=-100` on unmasked) · `datamodule.py` (loaders; length-bucketed sampler deferred to M3).
+- [ ] `training/masking.py` — **15% token / 10% whole-event / 10% whole-field-type** (structured, TabBERT/PRAGMA); never mask specials.
+- [ ] tests `test_dataset`/`test_collators`/`test_masking`. **Gate:** batch → `(B,L)` ids/mask/labels/branch_ids, round-trips tokenizer, mask fractions correct.
+
+**Brick 2 — Hierarchical model** (`src/credit_fm/models/`)
+- [ ] `base.py` — transformer block (attention + **RoPE**, **RMSNorm**, SwiGLU).
+- [ ] `profile_encoder` (~3L) → profile vector · `event_encoder` (~4–5L, **intra-event**) → per-event vector · `history_encoder` (~4–6L, **across event vectors** + profile; `[USR]` pools the loan embedding) + shape tests. *(Hierarchy = history length is #events not #tokens → cheaper, more faithful than a flat model.)*
+- [ ] `heads.py` — `mlm_head` (→ 440 vocab) · `classification_head` (`[USR]` → default logit).
+- [ ] `credit_fm.py` composition; **~30M params**. `test_e2e` (fwd+bwd, finite, loss decreasing, **<60s**).
+
+**Brick 3 — Toy train + FREEZE**
+- [ ] Single-GPU **1k loans × 100 steps**, loss trending down; `ruff`+`pytest` clean. → **M2 — architecture working + FROZEN.**
+
+### Phase D — Pretraining at scale — M3 (architecture FROZEN; turn up data only)  (30 Jul → 12 Aug)  ← highest risk
+**M3 = the *exact* M2 hierarchical architecture, scaled: full corpus + 8×H100 + ~600M tokens.
+No architecture changes — only data/compute + training infra + the at-scale tokenizer freeze.**
+- [ ] `optimizers.py` (AdamW, warmup-cosine, **bf16**, grad-clip) + `callbacks.py` (W&B, GCS/LFS checkpointing); `trainer.py` (HF Accelerate, **8×H100 DDP**) + NeMo adapter.
+- [ ] **Tokenizer v2 re-fit** on a multi-vintage sample (incl. 2006–2010 crisis values) **before** freezing vocab for pretrain; **version it** (reviewer #8). Then `encode_dataset.py` over the **full corpus** → shards (~600M tokens / ~1.2M loans, Chinchilla-honest for 30M).
+- [ ] Full pretraining on **Fannie sequences** (8× H100); monitor val loss + masked-token accuracy; iterate to convergence.
 - [ ] **Reviewer #4 — length-bucketed batching** in `collators.py` (group similar-length loans → far less padding; M3 throughput; bounded by `max_events=60`).
+- [ ] **Macro / context features (deferred from 27 Jun discussion)** — join public point-in-time series at **state/MSA** granularity as *loan-relative derived* event fields: FHFA HPI → **mark-to-market LTV** (negative equity, the dominant default driver); PMMS/FRED rate → **refi incentive**; BLS unemployment → ability-to-pay. **Vintage/as-of join only** (no revised series, respect publish lag — leakage discipline). **Give the OOT baseline the identical features** (expect the 0.757 crisis bar to *rise*; the FM's edge must then come from sequence dynamics, not macro levels). Reusable "context branch" across products. *Decide at Phase D start: include in the first pretrain, or add post-checkpoint as an ablation.*
 - [ ] Freeze candidate 30M checkpoint; training report. → **M3 (LFS)**
 
 ### Phase E — Inference + Evaluation + Dashboard  (13 Aug → 26 Aug)
