@@ -58,11 +58,13 @@ at SMALL scale here, then **freeze it**. M3 changes **only data volume / compute
 (→ promote to repo **DL-013** when the model code lands.) Goal of M2 = *evidence the architecture learns*,
 not a good model.
 
-**Brick 1 — Data layer** (`src/credit_fm/data/`; encode-ONCE so the dataloader never re-tokenizes)
-- [ ] `scripts/encode_dataset.py` — tokenizer.json + processed parquet → token-id **shards** on GCS (`output/encoded/fannie_mae/...`).
-- [ ] `dataset.py` (mmap shard reader → ids + branch/segment ids + event boundaries) · `collators.py` (pad + attn mask + `labels=-100` on unmasked) · `datamodule.py` (loaders; length-bucketed sampler deferred to M3).
-- [ ] `training/masking.py` — **15% token / 10% whole-event / 10% whole-field-type** (structured, TabBERT/PRAGMA); never mask specials.
-- [ ] tests `test_dataset`/`test_collators`/`test_masking`. **Gate:** batch → `(B,L)` ids/mask/labels/branch_ids, round-trips tokenizer, mask fractions correct.
+**Brick 1 — Data layer** ✅ **DONE (27 Jun)** (`src/credit_fm/data/`; encode-ONCE so the dataloader never re-tokenizes)
+- [x] `training/masking.py` — 15% token / 10% whole-event / 10% whole-field-type (structured); specials never masked. (merged)
+- [x] `KVTTokenizer.encode_with_meta` + `scripts/encode_dataset.py` → token-id **shards** + manifest (contract: `input_ids`/`event_index`/`field_type`/`branch`). *Ran on real Fannie train; verified on loan 103017066080.*
+- [x] `dataset.py` `CreditSequenceDataset` (shard reader → unpadded tensors).
+- [x] `collators.py` `MLMCollator` — **flat `(B,L)`** pad + mask + `labels=-100`; dynamic (train) / seeded (eval).
+- [x] `datamodule.py` `CreditDataModule` — train/val/test loaders; vocab_size from manifest; toy→full = settings.
+- [x] tests: `test_encode_dataset`/`test_dataset`/`test_collators`/`test_datamodule` (+ masking). **Gate met:** DataLoader yields `(B,L)` ids/mask/labels/event_index/field_type/branch, round-trips tokenizer, mask ≈15%. Delivered as stacked PRs (encode-dataset → sequence-dataset → mlm-collator → datamodule).
 
 **Brick 2 — Hierarchical model** (`src/credit_fm/models/`)
 - [ ] `base.py` — transformer block (attention + **RoPE**, **RMSNorm**, SwiGLU).
