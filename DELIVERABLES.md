@@ -11,10 +11,10 @@
 | # | Deliverable | Location | Status |
 |---|-------------|----------|--------|
 | 1 | **Evaluation Code** | `scripts/train_baseline.py` (single-cutoff); `scripts/build_oot_baseline.py` (OOT); `scripts/evaluate_downstream.py` | 🟡 baselines ✅ (incl. real-world OOT); FM downstream eval stub |
-| 2 | **Preprocessing Code** | `scripts/prepare_data.py`; `scripts/classify_schema.py`; `src/credit_fm/tokenizer/` (✅ M1); `src/credit_fm/data/` + `scripts/encode_dataset.py` (M2 Brick 1) | 🟡 split + classification + **tokenizer ✅ (M1, 440 tokens)**; data layer = M2 Brick 1 |
-| 3 | **Model Architecture** | `src/credit_fm/models/` (**hierarchical** profile/event/history encoders, MLM head, `credit_fm.py`) | 🔴→🟡 **M2 in progress (hier., started 27 Jun); frozen at M2, scaled at M3** |
+| 2 | **Preprocessing Code** | `scripts/prepare_data.py`; `scripts/classify_schema.py`; `src/credit_fm/tokenizer/` (✅ M1); `src/credit_fm/data/` (dataset/collators/datamodule/encode) + `scripts/encode_dataset.py` (✅ M2 Brick 1) | ✅ **split + classify + tokenizer (M1) + data layer (M2 Brick 1) all done** — encode-once shards, `MLMCollator`, `CreditDataModule`, 44 tests |
+| 3 | **Model Architecture** | `src/credit_fm/models/` (**hierarchical** profile/event/history encoders, MLM head, `credit_fm.py`) | 🔴 scaffold — **M2 Brick 2 next** (built + frozen at M2, scaled at M3) |
 | 4 | **Libraries & Tools** | `requirements.txt`, `pyproject.toml`, `Pipfile`, `scripts/setup_container.sh`, CI | ✅ done |
-| 5 | **Training Code** | `scripts/pretrain.py`; `src/credit_fm/training/` | 🔴 scaffold |
+| 5 | **Training Code** | `scripts/pretrain.py`; `src/credit_fm/training/` (`masking.py` ✅ M2) | 🟡 masking ✅; trainer/optimizers/pretrain = M3 |
 | 6 | **Inference Code** | `scripts/extract_embeddings.py`, `scripts/score_portfolio.py`; `src/credit_fm/inference/` | 🔴 scaffold |
 
 ## Data
@@ -46,6 +46,8 @@
 - **E** (inference + eval): #6 inference, #9 sample outputs, #1/#15 downstream eval, #16 model card.
 - **F** (handoff): #13 data card, #14 research paper, #17 technical report.
 
-## Snapshot (as of M1 tokenizer complete, 27 Jun)
-✅ 3 done (Libraries, Datasets, Evaluation Data) + tokenizer/M1 landed within #2/#11/#12 ·
-🟡 6 partial · 🔴 ~7 scaffold/planned. **Next: M2 = data layer + hierarchical model (architecture frozen at M2; M3 scales data only).**
+## Snapshot (as of M2 Brick 1 / data layer complete, 27 Jun)
+✅ 4 done (Preprocessing #2, Libraries #4, Datasets #7, Evaluation Data #8) — #2 now covers split +
+classify + tokenizer (M1) + the full data layer (M2 Brick 1, 44 tests) · 🟡 5 partial (baselines/
+masking/metadata/configs/reports) · 🔴 ~6 scaffold/planned. **Next: M2 Brick 2 = hierarchical model
+(`src/credit_fm/models/`), built + frozen at M2; M3 scales data only.**
