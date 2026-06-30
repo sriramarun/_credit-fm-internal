@@ -22,10 +22,14 @@ dev-sample-first → **now at full 26-yr scale on GCS; OOT baselines done (25 Ju
 |-----------|-------|-------------|--------|
 | **M1** — tokenizer complete | A | **Wed 1 Jul 2026** | 🟢 **DONE early (26 Jun)** — 440-token vocab on real Fannie train; anchored bins + `cal=` macro token; merged PR #31/#32 |
 | **G1** — baseline gate (trustworthy labels + strong baseline) | B | **Tue 15 Jul 2026** | 🟢 **DONE early** — real-world Fannie **OOT** bars (crisis ROC 0.757 / PR 0.024; recent ~0.78) |
-| **M2** — **hierarchical** model forward + toy train works (architecture frozen) | C | **Tue 29 Jul 2026** (internal aim ~18 Jul) | ⬜ |
-| **M3** — pretrained 30M checkpoint (M2 arch scaled — data/compute only) | D | **Tue 12 Aug 2026** | ⬜ |
-| **M4** — Fannie mortgages reference complete | E | **Tue 26 Aug 2026** | ⬜ |
+| **M2** — **hierarchical** model forward + toy train works (architecture frozen) | C | **Tue 29 Jul 2026** | 🟢 **DONE early (28 Jun)** — 25.5M model trains on real Fannie (loss 6.38→0.10, H100/bf16); arch FROZEN |
+| **M3** — pretrained 30M checkpoint (M2 arch scaled — data/compute only) | D | **Tue 12 Aug 2026** | ⬜ **next; internal aim ~18–21 Jul** (~3 wks of work; parallel encode = the blocker) |
+| **M4 / Phase E** — downstream verdict (FM embeddings **vs ROC 0.757**) + Fannie ref | E | **Tue 26 Aug 2026** | ⬜ **internal aim ~26 Jul–1 Aug** (the real test, DL-015) |
+| **Report + model card** (planning horizon) | E | **~14 Aug 2026** | ⬜ evaluation report + Fannie model card |
 | **M5 / M6** — invoice reference + final handoff | F | **Tue 9 Sep 2026** | ⬜ |
+
+> **Schedule note (28 Jun):** ~3–4 wks ahead (M1+M2 done early). Working plan is laid out **to 14 Aug**
+> — M3 checkpoint ~18 Jul, downstream verdict by ~1 Aug, report by 14 Aug (see `STATUS.md` Timeplan).
 
 ## Task tracker (by phase)
 
@@ -66,19 +70,27 @@ not a good model.
 - [x] `datamodule.py` `CreditDataModule` — train/val/test loaders; vocab_size from manifest; toy→full = settings.
 - [x] tests: `test_encode_dataset`/`test_dataset`/`test_collators`/`test_datamodule` (+ masking). **Gate met:** DataLoader yields `(B,L)` ids/mask/labels/event_index/field_type/branch, round-trips tokenizer, mask ≈15%. Delivered as stacked PRs (encode-dataset → sequence-dataset → mlm-collator → datamodule).
 
-**Brick 2 — Hierarchical model** (`src/credit_fm/models/`)
-- [ ] `base.py` — transformer block (attention + **RoPE**, **RMSNorm**, SwiGLU).
-- [ ] `profile_encoder` (~3L) → profile vector · `event_encoder` (~4–5L, **intra-event**) → per-event vector · `history_encoder` (~4–6L, **across event vectors** + profile; `[USR]` pools the loan embedding) + shape tests. *(Hierarchy = history length is #events not #tokens → cheaper, more faithful than a flat model.)*
-- [ ] `heads.py` — `mlm_head` (→ 440 vocab) · `classification_head` (`[USR]` → default logit).
-- [ ] `credit_fm.py` composition; **~30M params**. `test_e2e` (fwd+bwd, finite, loss decreasing, **<60s**).
+**Brick 2 — Hierarchical model** (`src/credit_fm/models/`) ✅ **DONE (27 Jun)**
+- [x] `base.py` — transformer block (RoPE + RMSNorm + SwiGLU) + `Embeddings` + mask helpers.
+- [x] `profile_encoder` (intra-profile) · `event_encoder` (**intra-event** + masked-mean pool) · `history_encoder` (`[LOAN]` token across profile+event vectors → loan embedding). Behavioural tests: intra-event isolation, masked-event isolation.
+- [x] `mlm_head` (3-vector concat: local + segment + loan → vocab) · `classification_head`.
+- [x] `credit_fm.py` `CreditFoundationModel` composition; **25.5M @ dim=384 / 34.6M @ dim=448** (≈30M target). `test_e2e` fwd+bwd finite + **overfits one batch 3.92→0.10**, <60s. 58 tests green.
 
-**Brick 3 — Toy train + FREEZE**
-- [ ] Single-GPU **1k loans × 100 steps**, loss trending down; `ruff`+`pytest` clean. → **M2 — architecture working + FROZEN.**
+**Brick 3 — Toy train + FREEZE** — ✅ gate met (e2e overfit *is* the toy-train proof)
+- [x] Architecture demonstrably learns → **M2 architecture WORKING + FROZEN.**
+- [ ] Confirm on H100: real-data toy run (small `pretrain.py`, 1k loans) + pick `dim` for ~30M → M3 handoff.
 
 ### Phase D — Pretraining at scale — M3 (architecture FROZEN; turn up data only)  (30 Jul → 12 Aug)  ← highest risk
 **M3 = the *exact* M2 hierarchical architecture, scaled: full corpus + 8×H100 + ~600M tokens.
 No architecture changes — only data/compute + training infra + the at-scale tokenizer freeze.**
-- [ ] `optimizers.py` (AdamW, warmup-cosine, **bf16**, grad-clip) + `callbacks.py` (W&B, GCS/LFS checkpointing); `trainer.py` (HF Accelerate, **8×H100 DDP**) + NeMo adapter.
+**⚠️ DL-015 (28 Jun): the lever is DATA SCALE.** 100k loans (~25M tokens) overfits for *any* model size
+(25.5M, 1.4M) — val MLM plateaus ~2.6–2.8 then rises. 25.5M needs ~2M loans (~500M tokens). MLM loss is
+a proxy — **gate the FM on downstream OOT (ROC 0.757), not MLM loss.**
+- [x] `optimizers.py` (AdamW, warmup-cosine, **bf16**, grad-clip), `train_mlm` loop with **dropout +
+  best-val checkpointing**, `scripts/pretrain.py` CLI (single-GPU; HF-Trainer/NeMo/W&B + 8×H100 DDP = later).
+- [x] **Parallel encoder** — `encode_dataset.py --workers N` (process pool, **spawn** not fork — gRPC+fork deadlocks workers writing to GCS; `fix/encode-spawn`). 17× speedup.
+- [x] **Full TRAIN corpus encoded** (29 Jun) — `run_2016_2017` train: **1,243,645 loans → 453M tokens, 63 shards** in ~27 min (`--workers 32 --shard-size 20000`). **453M tokens ≈ Chinchilla-matched for 25.5M (DL-004)** → enough data to escape the 100k overfitting (DL-015). Val already encoded (155k loans).
+- [ ] **Lazy/streaming dataset reads** — `CreditSequenceDataset` loads *all* shards into RAM (~20GB at 1.24M loans). Stream per-shard so the full corpus needn't fit in memory. **Next brick before the full pretrain.**
 - [ ] **Tokenizer v2 re-fit** on a multi-vintage sample (incl. 2006–2010 crisis values) **before** freezing vocab for pretrain; **version it** (reviewer #8). Then `encode_dataset.py` over the **full corpus** → shards (~600M tokens / ~1.2M loans, Chinchilla-honest for 30M).
 - [ ] Full pretraining on **Fannie sequences** (8× H100); monitor val loss + masked-token accuracy; iterate to convergence.
 - [ ] **Reviewer #4 — length-bucketed batching** in `collators.py` (group similar-length loans → far less padding; M3 throughput; bounded by `max_events=60`).
