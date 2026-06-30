@@ -3,6 +3,15 @@
 > Internal · the **live dashboard + weekly report**. Refresh every week and when a milestone
 > lands. The stable roadmap is in [`PLAN.md`](PLAN.md). *(Last updated: 27 Jun 2026)*
 
+**📌 28 Jun — M2 DONE + data-scale finding (DL-015).** Full hierarchical 3-branch model
+(`CreditFoundationModel`, 25.5M @ dim=384) + AdamW-cosine `train_mlm` (now with dropout + best-val
+checkpointing) + `pretrain.py`. Trains on real Fannie (toy: 6.38→0.10; H100/bf16). Architecture FROZEN.
+**Diagnostic (100k loans, val split):** model overfits regardless of size/dropout — train→~0.1, val
+plateaus **~2.6–2.8 then rises** (25.5M, 25.5M+dropout, and 1.4M all the same). 100k ≈ 25M tokens is
+~20× under the Chinchilla budget for 25.5M params (DL-004). **Conclusion: the lever is DATA SCALE,
+not model size/regularisation** → parallel-encode the full corpus, train on ~2M loans; **gate the FM
+on downstream OOT (ROC 0.757), not MLM loss.** **Next: M3 (parallel encoder → full-corpus pretrain).**
+
 **📌 27 Jun — M2 Brick 1 (DATA LAYER) DONE + merged.** The full pretraining data pipeline is built,
 tested, and on `main` (PRs #34–#39): `training/masking.py` (3-source MLM 15/10/10), `encode_with_meta`
 + `scripts/encode_dataset.py` (encode-once token-id **shards** + manifest — run on real Fannie),
@@ -23,22 +32,39 @@ is essentially complete; the model itself (tokenizer → encoders → pretrain) 
 
 | | |
 |---|---|
-| **Overall** | 🟢 On track (ahead of plan; tokenizer + data layer done, hierarchical model next) |
-| **Phase** | A + B done; **Phase C / M2 in progress** — data layer ✅, model (Brick 2) next (week ~2 of ~12) |
-| **Next milestone** | **M2** model forward + toy train — target **29 Jul 2026** (internal aim ~18 Jul; Brick 1 done 27 Jun) |
+| **Overall** | 🟢 Well ahead of plan — M1 (tokenizer) + M2 (model trains on real data) both done by 28 Jun |
+| **Phase** | A + B + **C/M2 done** (model trains); next is **Phase D / M3** — pretrain at scale (week ~2 of ~12) |
+| **Next milestone** | **M3** pretrained 30M checkpoint — **internal aim ~18–21 Jul** (~3 wks; official target 12 Aug, ~3–4 wks early) |
 | **Key metric (the bar)** | **Fannie OOT crisis: ROC 0.757 / PR-AUC 0.024** (real-world, leakage-free). Recent (2023–24): ROC ~0.78. |
-| **Biggest unknown** | Will the FM train *and* beat ~0.76 OOT? (data layer ready; model code next) |
+| **Biggest unknown** | Will the FM **generalize and beat ~0.76 OOT** once trained on ~2M loans? (the M3→E verdict, DL-015) |
+| **Planning horizon** | Schedule laid out **to 14 Aug** (see Timeplan below): M3 checkpoint ~18 Jul → downstream verdict by ~1 Aug → report by 14 Aug |
 
 ## Milestone progress
 
 ```
 M1 tokenizer      ▓▓▓▓▓▓▓▓▓▓  DONE — fit on real Fannie train (25.6M rows) → 440-token vocab; anchored/per-field bins + cal= macro token; 100% roundtrip, 0% OOV; merged (PR #31/#32), tests 14/14  (done 26 Jun, ahead of 1 Jul)
 G1 baseline gate  ▓▓▓▓▓▓▓▓▓▓  DONE — real-world OOT bars established (crisis + recent)
-M2 model          ▓▓▓░░░░░░░  ~30%   Brick 1 DATA LAYER ✅ MERGED (masking/encode-once shards/dataset/MLMCollator flat (B,L)/datamodule; PRs #34–39; 44 tests). Next Brick 2 = hierarchical model (base→event→profile→history→heads). arch FROZEN at M2   aim ~18 Jul / target 29 Jul
-M3 pretrained     ░░░░░░░░░░  not started   target 12 Aug
-M4 Fannie ref     ░░░░░░░░░░  not started   target 26 Aug
-M5/M6 handoff     ░░░░░░░░░░  not started   target  9 Sep
+M2 model          ▓▓▓▓▓▓▓▓▓▓  DONE (28 Jun, ahead of 29 Jul) — data layer + hierarchical model (25.5M @ dim384) + train loop; **toy run on REAL Fannie (2000 loans, H100, bf16): loss 6.38→0.10 over 300 steps, checkpoint to GCS.** arch FROZEN. 62 tests green.
+M3 pretrained     ▓▓▓▓▓▓▓▓▓░  FIRST CHECKPOINT DONE (29 Jun, ~6 wks early) — full corpus 1.24M loans / 453M tokens, batch128/12k steps. **GENERALIZES: val MLM 0.31 vs 100k's ~2.7** (train 0.074). Checkpoint m3_full.pt on GCS. Refinements optional (more steps / multi-vintage / tokenizer v2).
+M4 / Phase E      ░░░░░░░░░░  the verdict — FM embeddings vs ROC 0.757 (downstream eval)   aim ~26 Jul–1 Aug
+report + cards    ░░░░░░░░░░  evaluation report + model card   aim ~9–14 Aug (planning horizon)
+M5/M6 handoff     ░░░░░░░░░░  invoice ref + final handoff   target 9 Sep
 ```
+
+## Timeplan to 14 Aug (today = 28 Jun; we are ~3–4 wks ahead of the original phase plan)
+
+| Window | Focus | Outcome |
+|---|---|---|
+| **28 Jun – 4 Jul** | Parallel encoder (`encode_dataset.py --workers`); W&B decision (DL-009); tokenizer-v2 decision | encode unblocked |
+| **5 – 11 Jul** | Full-corpus encode (~2M loans); lazy/streaming dataset; first at-scale pretrain sanity | data + pipeline ready |
+| **12 – 18 Jul** | **Full pretraining run(s)**; iterate; watch train-vs-val converge | **→ M3 checkpoint ~18 Jul** |
+| **19 – 25 Jul** | Freeze 30M + training report; wire Phase E (`extract_embeddings`, `evaluate_downstream`) | M3 done; eval harness ready |
+| **26 Jul – 1 Aug** | **Downstream eval: FM embeddings vs ROC 0.757** | **the real verdict** |
+| **2 – 8 Aug** | Iterate on the result (more data / macro features / longer pretrain if needed) | tuned result |
+| **9 – 14 Aug** | Evaluation report + Fannie model card; buffer | deliverable for 14 Aug |
+
+**M3 duration = ~3 weeks of work** (parallel encode is the hard blocker; pretraining convergence is the
+variable). Producing *a* checkpoint is ~3 wks; whether it **beats 0.757** is the Phase-E verdict (DL-015).
 
 ## This week (cadence: Last / This / Next)
 
@@ -62,12 +88,16 @@ M5/M6 handoff     ░░░░░░░░░░  not started   target  9 Sep
   Frozen contract: `input_ids`/`event_index`/`field_type`/`branch` per token.
 - **Docs refreshed** — detailed `docs/architecture.md`, `RUNBOOK.md` run steps, DL-011…014 (PR #33, #39).
 
-**Now / next**
-- Start **M2 Brick 2 — hierarchical model**: `models/base.py` (RoPE/RMSNorm/SwiGLU) → `event_encoder`
-  (intra-event, pools via `event_index`) → `profile_encoder` → `history_encoder` (`[USR]` pooling) →
-  heads → `credit_fm.py`; `test_e2e` fwd+bwd <60s on one toy batch. Context window **1024**.
-- Then the toy train loop (1k loans × 100 steps, loss ↓) → **M2 gate, architecture FROZEN**.
-- Finish the **2023–24 recent OOT re-run** (drop censored 2025) → clean recent number.
+**Now / next — M3 (data scale)**
+- [x] **Parallel encoder** (spawn-based `--workers`) — 17× speedup.
+- [x] **Full TRAIN corpus encoded (29 Jun): 1.24M loans → 453M tokens, 63 shards, ~27 min.**
+  453M tokens ≈ Chinchilla-matched for 25.5M → escapes the 100k overfitting. Val (155k) already encoded.
+- [ ] **Lazy/streaming dataset** — current `CreditSequenceDataset` loads all shards into RAM (~20GB);
+  stream per-shard so the full corpus needn't fit in memory. **Next brick.**
+- [ ] **Full-corpus pretrain** of 25.5M on 1.24M loans (best-val + dropout on) — the run that should
+  finally generalize. Watch train-vs-val *converge* (vs the 100k plateau).
+- [ ] **Downstream eval** — `[USR]` embeddings → OOT harness → **FM-vs-0.757** (the real gate, DL-015).
+- Optional: tokenizer v2 (multi-vintage incl. 2006–2010) for crisis coverage; W&B (DL-009); multi-GPU.
 
 ## Key result — the story now
 

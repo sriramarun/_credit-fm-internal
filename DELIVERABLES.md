@@ -12,7 +12,7 @@
 |---|-------------|----------|--------|
 | 1 | **Evaluation Code** | `scripts/train_baseline.py` (single-cutoff); `scripts/build_oot_baseline.py` (OOT); `scripts/evaluate_downstream.py` | 🟡 baselines ✅ (incl. real-world OOT); FM downstream eval stub |
 | 2 | **Preprocessing Code** | `scripts/prepare_data.py`; `scripts/classify_schema.py`; `src/credit_fm/tokenizer/` (✅ M1); `src/credit_fm/data/` (dataset/collators/datamodule/encode) + `scripts/encode_dataset.py` (✅ M2 Brick 1) | ✅ **split + classify + tokenizer (M1) + data layer (M2 Brick 1) all done** — encode-once shards, `MLMCollator`, `CreditDataModule`, 44 tests |
-| 3 | **Model Architecture** | `src/credit_fm/models/` (**hierarchical** profile/event/history encoders, MLM head, `credit_fm.py`) | 🔴 scaffold — **M2 Brick 2 next** (built + frozen at M2, scaled at M3) |
+| 3 | **Model Architecture** | `src/credit_fm/models/` (base RoPE/RMSNorm/SwiGLU; **hierarchical** profile/event/history encoders; 3-vector MLM head; `CreditFoundationModel`) | ✅ **M2 Brick 2 done (27 Jun)** — e2e overfits 3.92→0.10, 25.5M @ dim384; arch FROZEN, scaled at M3 |
 | 4 | **Libraries & Tools** | `requirements.txt`, `pyproject.toml`, `Pipfile`, `scripts/setup_container.sh`, CI | ✅ done |
 | 5 | **Training Code** | `scripts/pretrain.py`; `src/credit_fm/training/` (`masking.py` ✅ M2) | 🟡 masking ✅; trainer/optimizers/pretrain = M3 |
 | 6 | **Inference Code** | `scripts/extract_embeddings.py`, `scripts/score_portfolio.py`; `src/credit_fm/inference/` | 🔴 scaffold |
