@@ -2,6 +2,8 @@
 
 > Internal · not pushed to git. **The stable map** (changes rarely). For "where are we right
 > now" see [`STATUS.md`](STATUS.md). Tasks: `[x]` done · `[~]` partial · `[ ]` open.
+> **(2 Jul)** Tracker of record is now the **xlsx** in this folder; deliverables north star = the
+> OS-components PDF. Anchors: NVIDIA blueprint = baseline, PRAGMA = target; framework > scores.
 
 **Objective.** Open-source (Apache 2.0) framework for training credit foundation models +
 reference implementations. finevals.ai × Sriram Krishnan, NVIDIA-sponsored (8× H100).
@@ -23,8 +25,9 @@ dev-sample-first → **now at full 26-yr scale on GCS; OOT baselines done (25 Ju
 | **M1** — tokenizer complete | A | **Wed 1 Jul 2026** | 🟢 **DONE early (26 Jun)** — 440-token vocab on real Fannie train; anchored bins + `cal=` macro token; merged PR #31/#32 |
 | **G1** — baseline gate (trustworthy labels + strong baseline) | B | **Tue 15 Jul 2026** | 🟢 **DONE early** — real-world Fannie **OOT** bars (crisis ROC 0.757 / PR 0.024; recent ~0.78) |
 | **M2** — **hierarchical** model forward + toy train works (architecture frozen) | C | **Tue 29 Jul 2026** | 🟢 **DONE early (28 Jun)** — 25.5M model trains on real Fannie (loss 6.38→0.10, H100/bf16); arch FROZEN |
-| **M3** — pretrained 30M checkpoint (M2 arch scaled — data/compute only) | D | **Tue 12 Aug 2026** | ⬜ **next; internal aim ~18–21 Jul** (~3 wks of work; parallel encode = the blocker) |
-| **M4 / Phase E** — downstream verdict (FM embeddings **vs ROC 0.757**) + Fannie ref | E | **Tue 26 Aug 2026** | ⬜ **internal aim ~26 Jul–1 Aug** (the real test, DL-015) |
+| **M3** — pretrained 30M checkpoint (M2 arch scaled — data/compute only) | D | **Tue 12 Aug 2026** | 🟢 **DONE early (29 Jun, ~6 wks)** — 1.24M loans / 453M tokens; val 0.31 (generalizes); `m3_full.pt` on GCS |
+| **M4 / Phase E** — downstream verdict (FM embeddings **vs ROC 0.757**) + Fannie ref | E | **Tue 26 Aug 2026** | 🟡 **recent-window DONE (2 Jul)** — frozen probe loses (0.687), **LoRA fine-tune wins (0.7526 > 0.746)**; crisis-OOT vs 0.757 open (needs 2008–10 panel) |
+| **Framework config-driven** (blueprint parity; added 2 Jul) | E | — | 🟢 **DONE (2 Jul, PRs #53/#54)** — 12 recipes, 13 scripts, one grammar; DDP deliberately last |
 | **Report + model card** (planning horizon) | E | **~14 Aug 2026** | ⬜ evaluation report + Fannie model card |
 | **M5 / M6** — invoice reference + final handoff | F | **Tue 9 Sep 2026** | ⬜ |
 
@@ -90,9 +93,8 @@ a proxy — **gate the FM on downstream OOT (ROC 0.757), not MLM loss.**
   best-val checkpointing**, `scripts/pretrain.py` CLI (single-GPU; HF-Trainer/NeMo/W&B + 8×H100 DDP = later).
 - [x] **Parallel encoder** — `encode_dataset.py --workers N` (process pool, **spawn** not fork — gRPC+fork deadlocks workers writing to GCS; `fix/encode-spawn`). 17× speedup.
 - [x] **Full TRAIN corpus encoded** (29 Jun) — `run_2016_2017` train: **1,243,645 loans → 453M tokens, 63 shards** in ~27 min (`--workers 32 --shard-size 20000`). **453M tokens ≈ Chinchilla-matched for 25.5M (DL-004)** → enough data to escape the 100k overfitting (DL-015). Val already encoded (155k loans).
-- [ ] **Lazy/streaming dataset reads** — `CreditSequenceDataset` loads *all* shards into RAM (~20GB at 1.24M loans). Stream per-shard so the full corpus needn't fit in memory. **Next brick before the full pretrain.**
-- [ ] **Tokenizer v2 re-fit** on a multi-vintage sample (incl. 2006–2010 crisis values) **before** freezing vocab for pretrain; **version it** (reviewer #8). Then `encode_dataset.py` over the **full corpus** → shards (~600M tokens / ~1.2M loans, Chinchilla-honest for 30M).
-- [ ] Full pretraining on **Fannie sequences** (8× H100); monitor val loss + masked-token accuracy; iterate to convergence.
+- [x] **First full-corpus pretrain DONE (29 Jun)** — 25.5M on 1.24M loans, batch 128, 12k steps (~1.25 epochs). **GENERALIZES: train 0.074 / val MLM 0.31** (vs 100k's ~2.7 that rose) → DL-015 confirmed, memorization gone. Checkpoint `m3_full.pt` on GCS. In-RAM dataset sufficed; batch 512 OOM'd (dense O(L²) attn) → 128.
+- [ ] **Refinements (optional, after the first verdict):** lazy/streaming dataset (only for corpora > RAM); tokenizer v2 (multi-vintage incl. 2006–2010) + longer/more-vintage pretrain; length-bucketed batching + flash-attn (to lift batch size on 8×H100).
 - [ ] **Reviewer #4 — length-bucketed batching** in `collators.py` (group similar-length loans → far less padding; M3 throughput; bounded by `max_events=60`).
 - [ ] **Macro / context features (deferred from 27 Jun discussion)** — join public point-in-time series at **state/MSA** granularity as *loan-relative derived* event fields: FHFA HPI → **mark-to-market LTV** (negative equity, the dominant default driver); PMMS/FRED rate → **refi incentive**; BLS unemployment → ability-to-pay. **Vintage/as-of join only** (no revised series, respect publish lag — leakage discipline). **Give the OOT baseline the identical features** (expect the 0.757 crisis bar to *rise*; the FM's edge must then come from sequence dynamics, not macro levels). Reusable "context branch" across products. *Decide at Phase D start: include in the first pretrain, or add post-checkpoint as an ablation.*
 - [ ] Freeze candidate 30M checkpoint; training report. → **M3 (LFS)**
