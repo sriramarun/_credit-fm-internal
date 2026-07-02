@@ -1,7 +1,23 @@
 # Status — Credit Foundation Model Framework
 
 > Internal · the **live dashboard + weekly report**. Refresh every week and when a milestone
-> lands. The stable roadmap is in [`PLAN.md`](PLAN.md). *(Last updated: 27 Jun 2026)*
+> lands. The stable roadmap is in [`PLAN.md`](PLAN.md). *(Last updated: 2 Jul 2026)*
+> **Tracker of record is now the xlsx** (`Open source credit foundation model - Project Manager.xlsx`,
+> this folder) + the OS-components PDF as deliverables north star; these MD files are narrative backup.
+
+**📌 2 Jul — FINE-TUNE VERDICT (FM beats the bar) + config-driven framework (PRs #53/#54).**
+(a) **Phase E complete.** Frozen probe lost as expected (emb-XGB 0.687 / combined 0.719 / linear 0.676
+vs features 0.746 — the handicap match). **Fine-tune ladder flips it: frozen-head 0.7192, full 0.7487,
+LoRA r=8 0.7526 > 0.746** (12mo default, Dec-2016 cutoff, 45k held-out loans). Matches PRAGMA's
+published pattern (LoRA ≥ task-specific model). Caveats: +0.007 is thin (~190 test positives); PR-AUC
+still below features (0.0127 vs 0.0171). **Crisis-OOT (0.757) is the remaining verdict.**
+(b) **Whole repo is config-driven** — blueprint parity: config engine (`utils/config.py`: include /
+${a.b} interpolation / dotted overrides / lineage) + 12 recipes in `configs/fannie_mae/`; all 13
+scripts one grammar (`-c recipe --key.path value`). Whole pipeline retargets to the crisis panel via
+`--run_name run_2008_2010`. 70 tests green.
+(c) **Anchors set:** NVIDIA blueprint = baseline, PRAGMA = improvement target; goal = the FRAMEWORK,
+not score-chasing. **Multi-GPU DDP deliberately sequenced last.** Next: release items (model/data
+cards, notebooks, weights publish) + crisis-OOT.
 
 **📌 28 Jun — M2 DONE + data-scale finding (DL-015).** Full hierarchical 3-branch model
 (`CreditFoundationModel`, 25.5M @ dim=384) + AdamW-cosine `train_mlm` (now with dropout + best-val
@@ -32,11 +48,11 @@ is essentially complete; the model itself (tokenizer → encoders → pretrain) 
 
 | | |
 |---|---|
-| **Overall** | 🟢 Well ahead of plan — M1 (tokenizer) + M2 (model trains on real data) both done by 28 Jun |
-| **Phase** | A + B + **C/M2 done** (model trains); next is **Phase D / M3** — pretrain at scale (week ~2 of ~12) |
-| **Next milestone** | **M3** pretrained 30M checkpoint — **internal aim ~18–21 Jul** (~3 wks; official target 12 Aug, ~3–4 wks early) |
-| **Key metric (the bar)** | **Fannie OOT crisis: ROC 0.757 / PR-AUC 0.024** (real-world, leakage-free). Recent (2023–24): ROC ~0.78. |
-| **Biggest unknown** | Will the FM **generalize and beat ~0.76 OOT** once trained on ~2M loans? (the M3→E verdict, DL-015) |
+| **Overall** | 🟢 ~5 wks ahead — M1+M2+M3+Phase E all done by 2 Jul; **LoRA fine-tune beats the recent-window bar (0.7526 > 0.746)**; framework fully config-driven |
+| **Phase** | E done (fine-tune verdict in) → now **release hardening** (cards, notebooks, weights) + **crisis-OOT**; DDP last |
+| **Next milestone** | **Crisis-OOT verdict** (needs 2008–10 processed panel) + OS release package per component map |
+| **Key metric (the bar)** | Recent-window: **beaten** (LoRA 0.7526 vs features 0.746). **Fannie OOT crisis ROC 0.757** still open. PR-AUC gap open (0.0127 vs 0.0171). |
+| **Biggest unknown** | Does the LoRA win **replicate on crisis-OOT** (2008–10)? Recent-window margin is thin (~190 test positives) |
 | **Planning horizon** | Schedule laid out **to 14 Aug** (see Timeplan below): M3 checkpoint ~18 Jul → downstream verdict by ~1 Aug → report by 14 Aug |
 
 ## Milestone progress
@@ -46,7 +62,8 @@ M1 tokenizer      ▓▓▓▓▓▓▓▓▓▓  DONE — fit on real Fannie tr
 G1 baseline gate  ▓▓▓▓▓▓▓▓▓▓  DONE — real-world OOT bars established (crisis + recent)
 M2 model          ▓▓▓▓▓▓▓▓▓▓  DONE (28 Jun, ahead of 29 Jul) — data layer + hierarchical model (25.5M @ dim384) + train loop; **toy run on REAL Fannie (2000 loans, H100, bf16): loss 6.38→0.10 over 300 steps, checkpoint to GCS.** arch FROZEN. 62 tests green.
 M3 pretrained     ▓▓▓▓▓▓▓▓▓░  FIRST CHECKPOINT DONE (29 Jun, ~6 wks early) — full corpus 1.24M loans / 453M tokens, batch128/12k steps. **GENERALIZES: val MLM 0.31 vs 100k's ~2.7** (train 0.074). Checkpoint m3_full.pt on GCS. Refinements optional (more steps / multi-vintage / tokenizer v2).
-M4 / Phase E      ░░░░░░░░░░  the verdict — FM embeddings vs ROC 0.757 (downstream eval)   aim ~26 Jul–1 Aug
+M4 / Phase E      ▓▓▓▓▓▓▓▓▓░  RECENT-WINDOW VERDICT DONE (2 Jul, ~4 wks early) — frozen probe loses (0.687/0.719 vs 0.746) but **LoRA fine-tune WINS: 0.7526 > 0.746** (full 0.7487, frozen-head 0.7192). Crisis-OOT (0.757) is the open final leg.
+framework/config  ▓▓▓▓▓▓▓▓▓▓  DONE (2 Jul, PRs #53/#54) — config engine + 12 recipes; all 13 scripts `-c recipe + --key.path` (blueprint parity); lineage in every artifact
 report + cards    ░░░░░░░░░░  evaluation report + model card   aim ~9–14 Aug (planning horizon)
 M5/M6 handoff     ░░░░░░░░░░  invoice ref + final handoff   target 9 Sep
 ```
@@ -92,12 +109,20 @@ variable). Producing *a* checkpoint is ~3 wks; whether it **beats 0.757** is the
 - [x] **Parallel encoder** (spawn-based `--workers`) — 17× speedup.
 - [x] **Full TRAIN corpus encoded (29 Jun): 1.24M loans → 453M tokens, 63 shards, ~27 min.**
   453M tokens ≈ Chinchilla-matched for 25.5M → escapes the 100k overfitting. Val (155k) already encoded.
-- [ ] **Lazy/streaming dataset** — current `CreditSequenceDataset` loads all shards into RAM (~20GB);
-  stream per-shard so the full corpus needn't fit in memory. **Next brick.**
-- [ ] **Full-corpus pretrain** of 25.5M on 1.24M loans (best-val + dropout on) — the run that should
-  finally generalize. Watch train-vs-val *converge* (vs the 100k plateau).
-- [ ] **Downstream eval** — `[USR]` embeddings → OOT harness → **FM-vs-0.757** (the real gate, DL-015).
-- Optional: tokenizer v2 (multi-vintage incl. 2006–2010) for crisis coverage; W&B (DL-009); multi-GPU.
+- [x] **Full-corpus pretrain DONE (29 Jun): 25.5M on 1.24M loans, batch 128, 12k steps (~1.25 epochs).**
+  **GENERALIZES — train 0.074 / val 0.31** (vs 100k's val ~2.7 that rose). Checkpoint `m3_full.pt` on GCS.
+  (In-RAM dataset worked; batch 512 OOM'd → 128 — dense O(L²) attention. Length-bucket/flash-attn deferred.)
+- [x] **Downstream probe #1 (frozen embeddings) — 29 Jun.** Dec-2016 obs → 12-mo default, 150k train loans,
+  loan-holdout. **features-XGB 0.746 ROC | FM-emb 0.687 | combined 0.719 | linear-probe 0.676.**
+  → **FM frozen embeddings LOSE to features** (but 0.69 ≫ 0.5 = real signal). Expected for a frozen
+  *unsupervised* emb vs *supervised* XGB on the same fields, on short benign in-sample history.
+- [ ] **★ Fine-tune / LoRA the FM on the default task** (the real FM test — frozen probe is the handicap
+  match; adapt pretrained weights + `classification_head`, compare to 0.746). **Next build.**
+- [ ] Crisis-OOT verdict (2008–10, bar 0.757) where sequence/regime signal should matter most — needs
+  the crisis-era processed panel (option B).
+- [ ] Lazy/streaming dataset (only needed for corpora bigger than RAM); tokenizer v2 (multi-vintage,
+  incl. 2006–2010 for crisis coverage) + longer pretrain — refinements after the first verdict.
+- Optional: W&B (DL-009); multi-GPU; length-bucketed batching + flash-attn (to lift batch size).
 
 ## Key result — the story now
 
